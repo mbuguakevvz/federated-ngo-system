@@ -94,6 +94,9 @@ def random_date(start_year=2021, end_year=2024):
 def seed_chapter(key):
     cfg  = CHAPTERS[key]
     schema = SCHEMA_FILE.read_text()
+    # Delete existing DB file to start fresh on every run
+    if cfg["db"].exists():
+        cfg["db"].unlink()
     con  = duckdb.connect(str(cfg["db"]))
     con.execute(schema)
     print(f"\n  Seeding {cfg['name']} ...")
