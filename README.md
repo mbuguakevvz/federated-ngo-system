@@ -41,7 +41,21 @@ analytical layer — without centralizing raw data storage.
 ---
 
 ## 🚀 Getting Started
+## 🐳 Quick Start with Docker
 
+The fastest way to run the full system:
+
+```bash
+git clone https://github.com/mbuguakevvz/federated-ngo-system.git
+cd federated-ngo-system
+docker-compose up --build
+```
+
+Then open:
+- **Dashboard** → http://localhost:8080
+- **Federation API** → http://localhost:8000/docs
+
+> Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 ### 1. Clone the repo
 ```bash
 git clone https://github.com/mbuguakevvz/federated-ngo-system.git
