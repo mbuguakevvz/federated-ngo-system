@@ -1,0 +1,93 @@
+# ================================================================
+# Federated NGO Data System — CI Pipeline
+# Runs on every push to main
+# Seeds chapter DBs → Runs ETL → Tests Federation API
+# ================================================================
+
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # ── Checkout code ───────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Set up Python ───────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── Install dependencies ────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── Seed chapter databases ──────────────────────────
+      - name: Seed chapter databases
+        run: |
+          echo "Seeding Nairobi, Kisumu and Mombasa chapter nodes..."
+          python scripts/seed_chapters.py
+
+      # ── Run ETL pipeline ────────────────────────────────
+      - name: Run ETL pipeline
+        run: |
+          echo "Extracting and loading data into central warehouse..."
+          python etl_pipelines/etl_to_warehouse.py
+
+      # ── Start Federation API and test endpoints ─────────
+      - name: Test Federation API
+        run: |
+          echo "Starting Federation API..."
+          uvicorn federation_api.main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+          echo "Testing /health endpoint..."
+          curl -f http://localhost:8000/health
+          echo ""
+          echo "Testing /kpi endpoint..."
+          curl -f http://localhost:8000/kpi
+          echo ""
+          echo "Testing /beneficiaries/count endpoint..."
+          curl -f http://localhost:8000/beneficiaries/count
+          echo ""
+          echo "All API endpoints responded successfully."
+
+      # ── Verify warehouse tables ─────────────────────────
+      - name: Verify warehouse data
+        run: |
+          python - <<EOF
+          import duckdb
+          from pathlib import Path
+
+          wh = duckdb.connect(str(Path("warehouse/ngo_warehouse.duckdb")), read_only=True)
+
+          checks = {
+              "dim_beneficiary": 600,
+              "dim_project":      12,
+              "fact_services":  1500,
+          }
+
+          all_passed = True
+          for table, expected in checks.items():
+              count = wh.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+              status = "PASS" if count >= expected else "FAIL"
+              if status == "FAIL":
+                  all_passed = False
+              print(f"  [{status}] {table}: {count} rows (expected >= {expected})")
+
+          wh.close()
+
+          if not all_passed:
+              raise SystemExit("Data validation failed.")
+          print("\n  All warehouse checks passed.")
+          EOF
